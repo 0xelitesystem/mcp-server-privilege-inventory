@@ -1,0 +1,1567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Server Privilege Inventory - what your MCP config actually grants</title>
+<meta name="description" content="Paste an MCP client config and get a privilege inventory: which servers launch a subprocess as your user, how mutable each code reference is, and which secrets you hand each one.">
+<link rel="canonical" href="https://0xelitesystem.github.io/mcp-server-privilege-inventory/">
+<meta property="og:title" content="MCP Server Privilege Inventory">
+<meta property="og:description" content="Paste an MCP client config and get a privilege inventory: exec surface, code-reference mutability, and the secrets you hand each server.">
+<meta property="og:url" content="https://0xelitesystem.github.io/mcp-server-privilege-inventory/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"MCP Server Privilege Inventory","applicationCategory":"DeveloperApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://0xelitesystem.github.io/mcp-server-privilege-inventory/","author":{"@type":"Person","name":"0xelitesystem","url":"https://elitesystem.ai"}}
+</script>
+<style>
+:root{
+  --bg:#0d1117; --panel:#151b23; --panel2:#1c232c; --line:#2a3441;
+  --fg:#e6edf3; --fg-dim:#9aa7b4; --fg-faint:#6e7c8c;
+  --accent:#4fb3ff; --accent-dim:#1f4f73;
+  --warn:#e5a13a; --hot:#f2707a; --cool:#5fd39a;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+}
+html[data-theme="light"]{
+  --bg:#f7f9fb; --panel:#ffffff; --panel2:#eef2f6; --line:#d3dbe3;
+  --fg:#111820; --fg-dim:#4a5764; --fg-faint:#6d7a88;
+  --accent:#0b62a4; --accent-dim:#bcd9ef;
+  --warn:#8a5a00; --hot:#a52832; --cool:#0d6b46;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--sans);
+  font-size:16px; line-height:1.55; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 64px}
+a{color:var(--accent)}
+h1,h2,h3{line-height:1.25;margin:0 0 8px;overflow-wrap:anywhere}
+h1{font-size:1.6rem;letter-spacing:-0.01em}
+h2{font-size:1.18rem;margin-top:34px;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:1rem;margin-top:20px}
+p{margin:0 0 12px;overflow-wrap:break-word}
+.sub{color:var(--fg-dim);margin:0 0 4px}
+.topbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+button{
+  font:inherit;font-size:.92rem;padding:7px 13px;border-radius:7px;
+  border:1px solid var(--line); background:var(--panel2); color:var(--fg); cursor:pointer;
+}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent-dim);border-color:var(--accent)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 6px}
+textarea{
+  width:100%; min-height:190px; resize:vertical; font-family:var(--mono); font-size:.82rem;
+  line-height:1.5; padding:11px; border-radius:9px; border:1px solid var(--line);
+  background:var(--panel); color:var(--fg);
+}
+textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 15px;margin:14px 0}
+.panel.lead{border-left:3px solid var(--accent)}
+.panel.floor{border-left:3px solid var(--warn)}
+.big{font-size:1.5rem;font-weight:650;letter-spacing:-0.01em;display:block;margin-bottom:2px}
+.kicker{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--fg-faint);margin:0 0 6px}
+.msg{border-radius:8px;padding:10px 12px;margin:12px 0;border:1px solid var(--line);background:var(--panel2)}
+.msg.err{border-color:var(--hot);color:var(--hot)}
+.msg.ok{border-color:var(--cool)}
+.hidden{display:none}
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;margin:12px 0}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:.85rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+th{background:var(--panel2);font-weight:600;white-space:nowrap;position:sticky;top:0}
+tr:last-child td{border-bottom:0}
+code,.mono{font-family:var(--mono);font-size:.86em}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 14px;margin:12px 0}
+.card h3{margin-top:0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.tag{
+  display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 7px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--fg-dim);white-space:nowrap
+}
+.tag.exec{border-color:var(--hot);color:var(--hot)}
+.tag.remote{border-color:var(--accent);color:var(--accent)}
+.tag.fixed{border-color:var(--cool);color:var(--cool)}
+.tag.churn{border-color:var(--warn);color:var(--warn)}
+dl{margin:8px 0 0;display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:5px 14px;font-size:.88rem}
+dt{color:var(--fg-faint)}
+dd{margin:0;overflow-wrap:anywhere}
+ul.notes{margin:10px 0 0;padding-left:18px;font-size:.88rem}
+ul.notes li{margin-bottom:5px;overflow-wrap:anywhere}
+ul.notes li.flag::marker{color:var(--warn)}
+.quote{border-left:2px solid var(--accent);padding:2px 0 2px 11px;margin:8px 0;color:var(--fg-dim);font-size:.88rem;overflow-wrap:anywhere}
+.src{font-size:.8rem;color:var(--fg-faint);overflow-wrap:anywhere}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);font-size:.86rem;color:var(--fg-dim)}
+footer a{margin-right:16px;display:inline-block}
+.pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-family:var(--mono);font-size:.8rem;overflow-wrap:anywhere}
+@media (max-width:520px){
+  h1{font-size:1.32rem}
+  dl{grid-template-columns:1fr;gap:2px}
+  dt{margin-top:6px}
+  .wrap{padding:16px 12px 48px}
+}
+</style>
+<script>
+(function(){
+  var t = "dark";
+  try { var s = window.localStorage.getItem("mspi-theme"); if (s === "light" || s === "dark") t = s; } catch (e) {}
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
+</head>
+<body>
+<div class="wrap">
+
+<div class="topbar">
+  <div>
+    <h1>MCP Server Privilege Inventory</h1>
+    <p class="sub">Paste an MCP client config. Get the exec surface, the code-reference mutability, and the secrets, computed in this tab.</p>
+  </div>
+  <button id="themeBtn" type="button" aria-label="Toggle colour theme">Light mode</button>
+</div>
+
+<div class="panel lead">
+  <p class="kicker">The claim this tool leads with</p>
+  <p><strong>A stdio MCP server's blast radius is your whole user account, not its <code>env</code> block.</strong>
+  The MCP transports specification describes stdio in one line: "The client launches the MCP server as a subprocess."
+  A subprocess runs with your uid. Your home directory, your SSH keys, your credential store and your network are inside
+  that bound whether or not a single variable is declared. So the enumerable list of secrets you hand a server is a
+  <em>floor</em> on what it can reach, never a ceiling. This page prints the account-level bound first and the secret
+  union second, on purpose.</p>
+  <p class="sub" style="margin-bottom:0">Second claim, and the part that had to be rebuilt: the mutability taxonomy.
+  A <code>:latest</code> Docker tag does <em>not</em> re-resolve on every launch, and <code>npx -y pkg</code> does.
+  Sources for every row are in <a href="#receipts">Receipts</a>.</p>
+</div>
+
+<h2>Paste a config</h2>
+<p class="sub">Accepts <code>claude_desktop_config.json</code>, a project <code>.mcp.json</code>, or any JSON with an
+<code>mcpServers</code> or <code>servers</code> object. Nothing leaves this tab, and literal secret values are redacted
+to a length and a short prefix in every output including the copied report.</p>
+
+<label for="cfg" class="src">Config JSON</label>
+<textarea id="cfg" spellcheck="false" placeholder='{ "mcpServers": { "example": { "command": "npx", "args": ["-y", "some-mcp-server"] } } }'></textarea>
+<div class="controls">
+  <button id="runBtn" class="primary" type="button">Inventory</button>
+  <button id="exBtn" type="button">Load example</button>
+  <button id="clrBtn" type="button">Clear</button>
+  <button id="copyBtn" type="button" disabled>Copy report</button>
+</div>
+<div id="status" class="msg hidden" role="status" aria-live="polite"></div>
+
+<div id="results" class="hidden">
+
+  <h2>1. Account-level bound</h2>
+  <div id="boundPanel" class="panel lead"></div>
+
+  <h2>2. Enumerable secret union (a floor)</h2>
+  <div id="secretPanel" class="panel floor"></div>
+
+  <h2>3. Per-server inventory</h2>
+  <div class="tablewrap"><table id="tbl">
+    <thead><tr>
+      <th scope="col">Server</th>
+      <th scope="col">Transport</th>
+      <th scope="col">Exec surface</th>
+      <th scope="col">Code reference</th>
+      <th scope="col">When the code is chosen</th>
+      <th scope="col">Secrets declared</th>
+      <th scope="col">Declared publisher</th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table></div>
+
+  <h3>Per-server detail</h3>
+  <div id="cards"></div>
+</div>
+
+<h2>How the mutability classes are assigned</h2>
+<p class="sub">This is the taxonomy the tool applies. The two rows people state backwards are the Docker tag row and the
+bare-name <code>npx</code> row, and the <code>npx</code> and <code>uvx</code> rows are why a class keyed on "is it a
+package runner" instead of "which package runner" produces confident falsehoods: they are the same shape in a config
+file and resolve on opposite schedules.</p>
+<div class="tablewrap"><table>
+  <thead><tr>
+    <th scope="col">Config shape</th>
+    <th scope="col">When the code is chosen</th>
+    <th scope="col">Why</th>
+  </tr></thead>
+  <tbody id="taxTbody"></tbody>
+</table></div>
+
+<h2 id="receipts">Receipts</h2>
+<p class="sub">Primary sources, quoted. Every claim above that is not arithmetic on your pasted JSON comes from one of
+these.</p>
+<div id="receiptsBox"></div>
+
+<h2>What this tool refuses to do</h2>
+<ul class="notes">
+  <li>It does not grade servers, score risk, or rank trustworthiness. A config records who you are trusting and how
+  mutable that trust is. It cannot say anything about what a server's code does once it runs.</li>
+  <li>It does not verify provenance. A namespace in your file is a name you typed, not a check anyone performed.</li>
+  <li>It does not predict anything about your production system. Every line of output is a property of the JSON in the
+  box above.</li>
+  <li>It does not guess where the documentation is silent. Where a runner's caching schedule is undocumented for a
+  particular spec form, the tool says so instead of assigning a class.</li>
+</ul>
+
+<h2>Related tools</h2>
+<ul class="notes">
+  <li><a href="https://github.com/0xelitesystem/mcp-config-generator">mcp-config-generator</a> builds and validates the
+  config. Use it for "is this JSON correct and will the client accept it".</li>
+  <li><a href="https://github.com/0xelitesystem/mcp-tool-poisoning-scanner">mcp-tool-poisoning-scanner</a> reads the
+  tool definitions a server returns and scans their text. Use it for "what is this server telling the model".</li>
+  <li>This page inventories privilege across servers you already installed. Use it for "what did I hand these things,
+  and how mutable is the code behind each one".</li>
+</ul>
+
+<footer>
+  <a href="https://elitesystem.ai">An elitesystem.ai tool</a>
+  <a href="https://github.com/0xelitesystem/mcp-server-privilege-inventory">Source</a>
+  <a href="https://0xelitesystem.github.io/">More tools</a>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------ *
+   * Constants and receipts
+   * ------------------------------------------------------------------ */
+
+  var MAX_INPUT = 400000;
+
+  /* MCP TypeScript SDK, packages/client/src/client/stdio.ts */
+  var INHERITED_UNIX = ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
+  var INHERITED_WIN32 = ["APPDATA", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PATH",
+    "PROCESSOR_ARCHITECTURE", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "USERNAME",
+    "USERPROFILE", "PROGRAMFILES"];
+
+  var RECEIPTS = [
+    {
+      claim: "A stdio server is a subprocess the client starts.",
+      quote: "The client launches the MCP server as a subprocess.",
+      src: "Model Context Protocol specification 2025-06-18, Transports, stdio",
+      url: "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports"
+    },
+    {
+      claim: "A shell variable is not silently granted to a stdio server.",
+      quote: "MCP servers launched over stdio inherit only a limited subset of environment variables automatically (the exact set is platform-dependent).",
+      src: "Model Context Protocol documentation, Debugging, Environment variables. The same section says you specify an env key to override the default variables or provide your own.",
+      url: "https://modelcontextprotocol.io/legacy/tools/debugging"
+    },
+    {
+      claim: "The reference client ships the actual allowlist, and the declared env wins over it.",
+      quote: "Environment variables to inherit by default, if an environment is not explicitly given.",
+      src: "MCP TypeScript SDK, packages/client/src/client/stdio.ts, doc comment on DEFAULT_INHERITED_ENV_VARS. The non-Windows list is " + INHERITED_UNIX.join(", ") + " (" + INHERITED_UNIX.length + " names, carrying the source comment \"list inspired by the default env inheritance of sudo\"); the win32 list is " + INHERITED_WIN32.length + " names. getDefaultEnvironment() also skips any value starting with \"()\", commented \"Skip functions, which are a security risk.\" The transport spawns with { ...getDefaultEnvironment(), ...this._serverParams.env }, so a declared variable overrides an inherited one.",
+      url: "https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/stdio.ts"
+    },
+    {
+      claim: "A Docker tag does not re-resolve on every launch. The default pull policy is missing.",
+      quote: "The default (missing) is to only pull the image if it's not present in the daemon's image cache.",
+      src: "Docker CLI reference, docker container run. The options table gives --pull the default value missing and the description \"Pull image before running (always, missing, never)\".",
+      url: "https://docs.docker.com/reference/cli/docker/container/run/"
+    },
+    {
+      claim: "npx installs a missing package into a cache directory rather than the project.",
+      quote: "If any requested packages are not present in the local project dependencies, then they are installed to a folder in the npm cache, which is added to the PATH environment variable in the executed process.",
+      src: "npm CLI documentation, npx. The same page: \"Package names with a specifier will only be considered a match if they have the exact same name and version as the local dependency.\"",
+      url: "https://docs.npmjs.com/cli/v11/commands/npx"
+    },
+    {
+      claim: "A bare package name under npx is re-resolved against the registry on every launch.",
+      quote: "If looking in the npx cache check if a newer version is available",
+      src: "npm CLI source, workspaces/libnpmexec/lib/index.js, comment in missingFromTree (read at npm 12.0.2, libnpmexec 11.0.2). A bare name, an explicit dist-tag and a semver range all fall through to getManifest, which calls pacote with preferOnline set to true; the range branch carries the comment \"the npx tree shouldn't be ok w/ an outdated version\". Only an exact version short-circuits, via spec.type === 'version' && node.pkgid === spec.raw. One precision: the local project tree is checked before the npx cache, and a bare name matches anything already there. A server launched by an MCP client normally has no project tree to match against, which is why the npx cache path is the one that applies here.",
+      url: "https://github.com/npm/cli/blob/latest/workspaces/libnpmexec/lib/index.js"
+    },
+    {
+      claim: "preferOnline means a registry round trip, not a cache read.",
+      quote: "Prefer to revalidate cache entries, even when it would not be strictly necessary.",
+      src: "pacote README, options, preferOnline. Documented default is false; libnpmexec sets it to true.",
+      url: "https://github.com/npm/pacote"
+    },
+    {
+      claim: "uvx is the opposite of npx here: resolved once, then cached.",
+      quote: "uvx will use the latest available version of the requested tool on the first invocation. After that, uvx will use the cached version of the tool unless a different version is requested, the cache is pruned, or the cache is refreshed.",
+      src: "uv documentation, Concepts, Tools, Tool versions. The same page: \"The environment is only cached to reduce the overhead of repeated invocations.\" The guide adds \"Note the @ syntax cannot be used for anything other than an exact version.\"",
+      url: "https://docs.astral.sh/uv/concepts/tools/"
+    },
+    {
+      claim: "A ${VAR} value in a project .mcp.json is a declared grant sourced from your shell, not a literal string.",
+      quote: "Claude Code supports environment variable expansion in .mcp.json files, allowing teams to share configurations while maintaining flexibility for machine-specific paths and sensitive values like API keys.",
+      src: "Claude Code documentation, MCP, Environment variable expansion in .mcp.json. Supported syntax is ${VAR} and ${VAR:-default}; expansion applies in command, args, env, url and headers. The same section: \"If a referenced environment variable isn't set and has no default value, the config still loads: Claude Code reports a missing-variable warning for that server in claude mcp list output and uses the unexpanded ${VAR} text as-is.\"",
+      url: "https://code.claude.com/docs/en/mcp"
+    }
+  ];
+
+  var TAXONOMY = [
+    ["image@sha256:...", "Never re-resolved", "Content-addressed. The digest names exactly one image manifest, so the pull policy cannot change which bytes run."],
+    ["image:tag, default pull policy", "Once, at first pull", "docker run defaults to --pull=missing, so a cached image is reused. The exposure is not churn; it is that your config does not record which digest is running."],
+    ["image:tag with --pull=always", "Every launch, by policy", "The flag is explicit. A new push to the tag is picked up on the next start."],
+    ["image:tag with --pull=never", "Never pulled", "Runs only what is already cached; a missing image is an error rather than a fetch."],
+    ["npx pkg (no version)", "Every launch", "The npx cache lookup treats a bare name specially and revalidates the manifest against the registry with preferOnline."],
+    ["npx pkg@latest, or a semver range", "Every launch", "A dist-tag and a range both fall through to the same manifest lookup as a bare name."],
+    ["npx pkg@1.2.3", "Top level once", "An exact version matches the cached tree by pkgid with no registry call. The transitive tree is not named in your config and is not pinned by it."],
+    ["uvx pkg (no version)", "Once, on first invocation", "uv caches the tool environment and reuses it until a different version is requested, the cache is pruned, or the cache is refreshed."],
+    ["uvx pkg@latest", "Every launch", "The @latest suffix is documented as the way to refresh the uv cache."],
+    ["uvx pkg@1.2.3", "Pinned", "uv accepts only an exact version after @, so this form does not float."],
+    ["npx github:owner/repo#ref, git+https://...", "Every launch, and the ref itself is mutable", "A non-registry spec is resolved on each run, and a branch name can point at new commits without any config change."],
+    ["node /abs/path/server.js, ./venv/bin/x", "Whatever is on disk at launch", "No registry, no version, no digest, no signature. Anything that can write the path changes the code, including the server's own updater."],
+    ["\"url\": \"https://...\"", "Not chosen locally at all", "Nothing is launched on your machine. The operator's deploy decides the code, changes it without any local signal, and your config cannot pin it."]
+  ];
+
+  /* ------------------------------------------------------------------ *
+   * Helpers
+   * ------------------------------------------------------------------ */
+
+  function makeMap() { return Object.create(null); }
+  function hasOwn(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function isPlainObject(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
+  function asString(v) { return typeof v === "string" ? v : ""; }
+  function fmtInt(n) { return Number.isFinite(n) ? String(Math.trunc(n)) : "0"; }
+
+  function setOf(list) {
+    var m = makeMap();
+    for (var i = 0; i < list.length; i++) { m[list[i]] = true; }
+    return m;
+  }
+
+  function plural(n, one, many) {
+    return fmtInt(n) + " " + (Math.trunc(n) === 1 ? one : many);
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (typeof cls === "string" && cls) { e.className = cls; }
+    if (typeof text === "string") { e.textContent = text; }
+    else if (typeof text === "number" && Number.isFinite(text)) { e.textContent = String(text); }
+    return e;
+  }
+
+  function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
+
+  /* ------------------------------------------------------------------ *
+   * Secret shape detection
+   * ------------------------------------------------------------------ */
+
+  var SECRET_NAME_RE = /(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|APIKEY|ACCESS_KEY|PRIVATE_KEY|SESSION|COOKIE|AUTHORIZATION|BEARER|WEBHOOK|SIGNING_|_KEY$|^KEY$|_PAT$|^PAT$|_DSN$)/i;
+  var CRED_URI_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:@\/]+:[^\s@\/]+@/;
+  var OPAQUE_RE = /^[A-Za-z0-9_.+=~-]{20,}$/;
+  var VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+  function looksOpaque(v) {
+    if (typeof v !== "string") { return false; }
+    if (v.length < 20) { return false; }
+    if (v.indexOf("/") !== -1 || v.indexOf("\\") !== -1 || v.indexOf(" ") !== -1) { return false; }
+    if (!OPAQUE_RE.test(v)) { return false; }
+    return /[A-Za-z]/.test(v) && /[0-9]/.test(v);
+  }
+
+  function looksSecretValue(v) {
+    if (typeof v !== "string" || v === "") { return false; }
+    if (CRED_URI_RE.test(v)) { return true; }
+    return looksOpaque(v);
+  }
+
+  function isSecretDeclaration(name, value) {
+    if (typeof name === "string" && SECRET_NAME_RE.test(name)) { return true; }
+    return looksSecretValue(value);
+  }
+
+  /* Never echo a literal credential. Length plus a four-character prefix. */
+  function redact(v) {
+    var s = asString(v);
+    if (s === "") { return "(empty string)"; }
+    var head = s.slice(0, 4);
+    return fmtInt(s.length) + " chars, starts \"" + head + "\"";
+  }
+
+  function findVarRefs(value) {
+    var out = [];
+    if (typeof value !== "string" || value === "") { return out; }
+    var re = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
+    var m = re.exec(value);
+    while (m !== null) {
+      out.push({ name: m[1], fallback: typeof m[2] === "string" ? m[2] : null, whole: m[0] });
+      m = re.exec(value);
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Command classification
+   * ------------------------------------------------------------------ */
+
+  var DOCKER_VALUE_FLAGS = setOf(["-e", "--env", "-v", "--volume", "--mount", "-p", "--publish",
+    "--name", "-w", "--workdir", "-u", "--user", "--network", "--net", "--entrypoint",
+    "--env-file", "--label", "-l", "--add-host", "--device", "--cap-add", "--cap-drop",
+    "--pull", "--platform", "--restart", "--log-driver", "--tmpfs", "--security-opt",
+    "-m", "--memory", "--cpus", "--health-cmd", "--dns", "--expose", "--group-add",
+    "--ulimit", "--sysctl", "-a", "--attach", "-h", "--hostname", "--ipc", "--pid",
+    "--userns", "--volumes-from", "--shm-size", "--stop-signal"]);
+
+  var NPX_VALUE_FLAGS = setOf(["-p", "--package", "-c", "--call", "--workspace", "-w",
+    "--userconfig", "--globalconfig", "--registry", "--prefix", "--cache"]);
+
+  var UV_VALUE_FLAGS = setOf(["--from", "--with", "--python", "-p", "--index-url",
+    "--extra-index-url", "--index", "--constraint", "-c", "--refresh-package", "--cache-dir"]);
+
+  var LOCAL_RUNTIMES = setOf(["node", "nodejs", "python", "python3", "py", "deno", "bun",
+    "ruby", "perl", "java", "dotnet", "go", "php", "sh", "bash", "zsh", "pwsh", "powershell",
+    "cmd", "env"]);
+
+  function baseName(cmd) {
+    var s = asString(cmd);
+    var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+    var b = i >= 0 ? s.slice(i + 1) : s;
+    return b.replace(/\.(exe|cmd|bat|ps1)$/i, "").toLowerCase();
+  }
+
+  function isPathLike(s) {
+    return /^(\.{1,2}[\/\\]|[\/\\]|[A-Za-z]:[\/\\]|~[\/\\])/.test(asString(s));
+  }
+
+  /* Walk an argv, honouring "flag value" pairs, and return the first bare token. */
+  function firstBareToken(args, start, valueFlags) {
+    var i = start;
+    while (i < args.length) {
+      var t = asString(args[i]);
+      if (t === "--") { i++; continue; }
+      if (t.length > 1 && t.charAt(0) === "-") {
+        if (t.indexOf("=") !== -1) { i++; continue; }
+        if (hasOwn(valueFlags, t)) { i += 2; continue; }
+        var m = /^-([A-Za-z]{2,})$/.exec(t);
+        if (m) {
+          var last = "-" + m[1].charAt(m[1].length - 1);
+          i += hasOwn(valueFlags, last) ? 2 : 1;
+          continue;
+        }
+        i++;
+        continue;
+      }
+      return { token: t, index: i };
+    }
+    return { token: "", index: -1 };
+  }
+
+  function flagValue(args, longName, valueFlags) {
+    var i = 0;
+    var prefix = longName + "=";
+    while (i < args.length) {
+      var t = asString(args[i]);
+      if (t === longName) { return i + 1 < args.length ? asString(args[i + 1]) : ""; }
+      if (t.indexOf(prefix) === 0) { return t.slice(prefix.length); }
+      i++;
+    }
+    return null;
+  }
+
+  /* Collect docker -e style entries: "-e NAME=value" and bare "-e NAME" pass-throughs. */
+  function dockerEnvFlags(args) {
+    var out = [];
+    for (var i = 0; i < args.length; i++) {
+      var t = asString(args[i]);
+      var val = null;
+      if (t === "-e" || t === "--env") {
+        val = i + 1 < args.length ? asString(args[i + 1]) : "";
+        i++;
+      } else if (t.indexOf("-e=") === 0) {
+        val = t.slice(3);
+      } else if (t.indexOf("--env=") === 0) {
+        val = t.slice(6);
+      }
+      if (val === null) { continue; }
+      var eq = val.indexOf("=");
+      if (eq > 0) { out.push({ name: val.slice(0, eq), value: val.slice(eq + 1), passthrough: false }); }
+      else if (val !== "") { out.push({ name: val, value: "", passthrough: true }); }
+    }
+    return out;
+  }
+
+  function splitPkgSpec(spec) {
+    var at = spec.lastIndexOf("@");
+    if (at > 0) { return { name: spec.slice(0, at), version: spec.slice(at + 1) }; }
+    return { name: spec, version: "" };
+  }
+
+  var EXACT_SEMVER_RE = /^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]*)?$/;
+  var DIST_TAG_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
+  var GIT_SHORTHAND_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(#[^\s]*)?$/;
+
+  function isGitSpec(s) {
+    if (/^(github|gitlab|bitbucket|gist):/i.test(s)) { return true; }
+    if (/^git(\+(ssh|https?|file))?:/i.test(s)) { return true; }
+    if (/\.git(#|$)/i.test(s)) { return true; }
+    if (isPathLike(s) || s.indexOf("file:") === 0) { return false; }
+    if (s.charAt(0) !== "@" && GIT_SHORTHAND_RE.test(s)) { return true; }
+    return false;
+  }
+
+  function npmPublisher(name) {
+    if (name.charAt(0) === "@") {
+      var slash = name.indexOf("/");
+      var scope = slash > 0 ? name.slice(0, slash) : name;
+      if (scope.toLowerCase() === "@modelcontextprotocol") {
+        return scope + " (the npm scope the reference SDK publishes under)";
+      }
+      return scope + " (npm scope)";
+    }
+    return "unscoped npm package";
+  }
+
+  function hostOf(url) {
+    var m = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^\/?#]*)/.exec(asString(url));
+    if (!m) { return ""; }
+    var auth = m[1];
+    var at = auth.lastIndexOf("@");
+    if (at >= 0) { auth = auth.slice(at + 1); }
+    return auth.replace(/:\d+$/, "");
+  }
+
+  /* --- classifiers ------------------------------------------------- */
+
+  function classifyContainer(engine, args) {
+    if (args.length > 0 && asString(args[0]).toLowerCase() === "mcp") {
+      return {
+        cls: "DELEGATED", ref: engine + " " + args.join(" "),
+        timing: "Not determinable from this config",
+        why: "This entry delegates to the " + engine + " MCP gateway, which selects the image itself. Your config does not name an image, so nothing here pins one.",
+        publisher: "(chosen by the " + engine + " gateway, not by this file)"
+      };
+    }
+    var i = 0;
+    while (i < args.length) {
+      var w = asString(args[i]).toLowerCase();
+      if (w === "container" || w === "run" || w === "create") { i++; continue; }
+      break;
+    }
+    var found = firstBareToken(args, i, DOCKER_VALUE_FLAGS);
+    var image = found.token;
+    var pullRaw = flagValue(args, "--pull", DOCKER_VALUE_FLAGS);
+    var pull = pullRaw === null ? "" : pullRaw.toLowerCase();
+
+    if (image === "") {
+      return {
+        cls: "UNPARSED", ref: engine + " " + args.join(" "),
+        timing: "Not determinable from this config",
+        why: "No image reference could be read out of these arguments. Check the argv above; this tool reports what it parsed rather than guessing.",
+        publisher: "(unread)"
+      };
+    }
+
+    var atIdx = image.indexOf("@");
+    if (atIdx > 0) {
+      var digest = image.slice(atIdx + 1);
+      var repoD = image.slice(0, atIdx);
+      if (/^[A-Za-z0-9]+:[0-9a-f]{32,}$/.test(digest)) {
+        return {
+          cls: "DIGEST", ref: image, timing: "Never re-resolved",
+          why: "Pinned by digest. The reference is content-addressed, so it names exactly one image manifest and the pull policy cannot change which bytes run." +
+               (pull === "always" ? " The --pull=always here re-checks the registry but cannot land on different content." : ""),
+          publisher: repoD
+        };
+      }
+      return {
+        cls: "UNPARSED", ref: image, timing: "Not determinable from this config",
+        why: "The reference contains an @ but the part after it is not a recognisable digest, so this tool will not assign a class.",
+        publisher: repoD
+      };
+    }
+
+    var repo = image;
+    var tag = "";
+    var lastSlash = image.lastIndexOf("/");
+    var lastColon = image.lastIndexOf(":");
+    if (lastColon > lastSlash) { repo = image.slice(0, lastColon); tag = image.slice(lastColon + 1); }
+    var tagShown = tag === "" ? "latest (implicit)" : tag;
+
+    if (pull === "always") {
+      return {
+        cls: "PULL_ALWAYS", ref: repo + ":" + tagShown, timing: "Every launch, by policy",
+        why: "--pull=always is set, so the tag is resolved against the registry before every container start. A new push to this tag is picked up on the next start.",
+        publisher: repo
+      };
+    }
+    if (pull === "never") {
+      return {
+        cls: "PULL_NEVER", ref: repo + ":" + tagShown, timing: "Never pulled",
+        why: "--pull=never is set, so only an already cached image runs and a missing image is an error rather than a fetch. Which digest is cached is still not recorded here.",
+        publisher: repo
+      };
+    }
+    return {
+      cls: "CACHED_TAG", ref: repo + ":" + tagShown, timing: "Once, at first pull",
+      why: "No --pull flag, so docker run uses its default policy of missing: the image is pulled only if it is not already in the daemon's cache. The exposure is not that the tag churns under you, it is that this config does not record which digest you are running, and two machines with this same file can run different images indefinitely.",
+      publisher: repo
+    };
+  }
+
+  function classifyNpx(runnerLabel, args, startIndex) {
+    var pkgFlag = flagValue(args, "--package", NPX_VALUE_FLAGS);
+    if (pkgFlag === null) { pkgFlag = flagValue(args, "-p", NPX_VALUE_FLAGS); }
+    var spec = pkgFlag !== null && pkgFlag !== "" ? pkgFlag : firstBareToken(args, startIndex, NPX_VALUE_FLAGS).token;
+
+    if (spec === "") {
+      return {
+        cls: "UNPARSED", ref: runnerLabel + " " + args.join(" "), timing: "Not determinable from this config",
+        why: "No package specifier could be read out of these arguments.", publisher: "(unread)"
+      };
+    }
+    if (isPathLike(spec) || spec.indexOf("file:") === 0) {
+      return {
+        cls: "ON_DISK", ref: spec, timing: "Whatever is on disk at launch",
+        why: "A filesystem specifier. No version, no digest, no integrity check.", publisher: "(local filesystem)"
+      };
+    }
+    if (isGitSpec(spec)) {
+      var ref = "";
+      var hash = spec.indexOf("#");
+      if (hash >= 0) { ref = spec.slice(hash + 1); }
+      return {
+        cls: "GIT_REF", ref: spec, timing: "Every launch, and the ref itself is mutable",
+        why: "A non-registry specifier is resolved on every run. " +
+             (ref === "" ? "No ref is given, so the repository default branch is used, and a branch moves." :
+              (/^[0-9a-f]{7,40}$/i.test(ref) ? "The ref \"" + ref + "\" looks like a commit sha, which does not move, though the tree it is fetched from still can be force-pushed or deleted." :
+               "The ref \"" + ref + "\" is a branch or tag name, which can point at new commits without any change to this config.")),
+        publisher: spec
+      };
+    }
+    if (/^https?:\/\//i.test(spec)) {
+      return {
+        cls: "REMOTE_TARBALL", ref: spec, timing: "Every launch",
+        why: "A tarball URL is fetched on each run and the bytes behind a URL can change without the URL changing.",
+        publisher: hostOf(spec)
+      };
+    }
+
+    var parts = splitPkgSpec(spec);
+    var pub = npmPublisher(parts.name);
+    if (parts.version === "") {
+      return {
+        cls: "EVERY_LAUNCH", ref: parts.name + " (no version)", timing: "Every launch",
+        why: "A bare package name. npm's npx cache lookup treats a name-only specifier as a special case and revalidates the manifest against the registry with preferOnline, so an upstream publish is picked up without you editing a character of this config. This is the row people state backwards.",
+        publisher: pub
+      };
+    }
+    if (EXACT_SEMVER_RE.test(parts.version)) {
+      return {
+        cls: "EXACT_VERSION", ref: parts.name + "@" + parts.version, timing: "Top level once",
+        why: "An exact version short-circuits the npx cache lookup by matching the cached tree on pkgid, with no registry call. What is pinned is the top-level tarball only. The transitive dependency tree is not named anywhere in this config and was resolved when the cache entry was first created.",
+        publisher: pub
+      };
+    }
+    if (DIST_TAG_RE.test(parts.version)) {
+      return {
+        cls: "EVERY_LAUNCH", ref: parts.name + "@" + parts.version, timing: "Every launch",
+        why: "An explicit dist-tag resolves through the same manifest lookup as a bare name, so it is re-checked against the registry on every run.",
+        publisher: pub
+      };
+    }
+    return {
+      cls: "EVERY_LAUNCH", ref: parts.name + "@" + parts.version, timing: "Every launch",
+      why: "A semver range is re-resolved on every run; npm's own source comments that the npx tree should not be satisfied by an outdated version.",
+      publisher: pub
+    };
+  }
+
+  function classifyUv(args, startIndex) {
+    var fromFlag = flagValue(args, "--from", UV_VALUE_FLAGS);
+    var spec = fromFlag !== null && fromFlag !== "" ? fromFlag : firstBareToken(args, startIndex, UV_VALUE_FLAGS).token;
+
+    if (spec === "") {
+      return {
+        cls: "UNPARSED", ref: "uvx " + args.join(" "), timing: "Not determinable from this config",
+        why: "No tool specifier could be read out of these arguments.", publisher: "(unread)"
+      };
+    }
+    if (fromFlag !== null && fromFlag !== "" && /[<>=!~,]/.test(fromFlag)) {
+      return {
+        cls: "UNDOCUMENTED", ref: fromFlag, timing: "Not stated by the uv documentation",
+        why: "A --from requirement specifier with version constraints. The uv documentation states the caching schedule for the plain and @-suffixed forms; it does not state one for a constrained --from requirement, so this tool does not assign a class rather than guessing.",
+        publisher: fromFlag
+      };
+    }
+    if (isPathLike(spec)) {
+      return {
+        cls: "ON_DISK", ref: spec, timing: "Whatever is on disk at launch",
+        why: "A filesystem specifier. No version, no digest, no integrity check.", publisher: "(local filesystem)"
+      };
+    }
+
+    var at = spec.lastIndexOf("@");
+    if (at <= 0) {
+      return {
+        cls: "CACHE_ONCE", ref: spec + " (no version)", timing: "Once, on first invocation",
+        why: "uv resolves the latest available version on the first invocation and then reuses the cached tool environment until a different version is requested, the cache is pruned, or the cache is refreshed. This is the opposite of the identically shaped npx form, which is why the taxonomy has to key on which runner rather than on whether a runner is present.",
+        publisher: spec
+      };
+    }
+    var uname = spec.slice(0, at);
+    var uver = spec.slice(at + 1);
+    if (uver.toLowerCase() === "latest") {
+      return {
+        cls: "EVERY_LAUNCH", ref: spec, timing: "Every launch",
+        why: "uv documents the @latest suffix as the way to request the newest version and refresh the cache, so this form re-resolves.",
+        publisher: uname
+      };
+    }
+    if (EXACT_SEMVER_RE.test(uver) || /^\d+(\.\d+)*([a-z0-9.\-+]*)$/i.test(uver)) {
+      return {
+        cls: "EXACT_VERSION", ref: spec, timing: "Pinned",
+        why: "uv accepts only an exact version after @, so this form does not float. The dependency tree resolved into the tool environment is still not named in this config.",
+        publisher: uname
+      };
+    }
+    return {
+      cls: "UNPARSED", ref: spec, timing: "Not determinable from this config",
+      why: "uv documents that the @ syntax cannot be used for anything other than an exact version, so \"" + uver + "\" is not a form uv will accept here. Fix the specifier before trusting any reading of it.",
+      publisher: uname
+    };
+  }
+
+  function classifyCodeRef(command, argsIn) {
+    var args = Array.isArray(argsIn) ? argsIn : [];
+    var cmd = baseName(command);
+    var raw = asString(command);
+
+    if (cmd === "docker" || cmd === "podman" || cmd === "nerdctl") {
+      return classifyContainer(cmd, args);
+    }
+    if (cmd === "npx" || cmd === "bunx" || cmd === "pnpx") {
+      return classifyNpx(cmd, args, 0);
+    }
+    if (cmd === "npm" && asString(args[0]).toLowerCase() === "exec") {
+      return classifyNpx("npm exec", args, 1);
+    }
+    if ((cmd === "pnpm" || cmd === "yarn") && asString(args[0]).toLowerCase() === "dlx") {
+      return classifyNpx(cmd + " dlx", args, 1);
+    }
+    if (cmd === "uvx") {
+      return classifyUv(args, 0);
+    }
+    if (cmd === "uv" && asString(args[0]).toLowerCase() === "tool" && asString(args[1]).toLowerCase() === "run") {
+      return classifyUv(args, 2);
+    }
+    if (cmd === "pipx" && asString(args[0]).toLowerCase() === "run") {
+      var pspec = firstBareToken(args, 1, UV_VALUE_FLAGS).token;
+      return {
+        cls: "UNDOCUMENTED", ref: "pipx run " + pspec, timing: "Not stated by a source this tool has read",
+        why: "pipx run caches an ephemeral environment, but this tool has not verified the cache lifetime against pipx's documentation, so it does not assign a class. Treat the version as unpinned unless the specifier carries one.",
+        publisher: pspec === "" ? "(unread)" : pspec
+      };
+    }
+    if (isPathLike(raw)) {
+      return {
+        cls: "ON_DISK", ref: raw, timing: "Whatever is on disk at launch",
+        why: "An absolute or relative path to an executable. There is no registry, no version, no digest and no signature in this reference. Anything that can write that path changes the code that runs, including the program's own updater.",
+        publisher: "(local filesystem)"
+      };
+    }
+    if (hasOwn(LOCAL_RUNTIMES, cmd)) {
+      var script = firstBareToken(args, 0, makeMap()).token;
+      return {
+        cls: "ON_DISK", ref: script === "" ? raw : raw + " " + script,
+        timing: "Whatever is on disk at launch",
+        why: "A language runtime pointed at a local script. There is no registry, no version, no digest and no signature in this reference." +
+             (script === "" ? " No script path was found in the arguments." : ""),
+        publisher: "(local filesystem)"
+      };
+    }
+    return {
+      cls: "PATH_LOOKUP", ref: raw, timing: "Whatever your PATH resolves to at launch",
+      why: "A bare executable name with no path. The client resolves it through PATH, so which binary runs depends on the PATH the client provides. Under the reference SDK that PATH is inherited from your environment, so the answer can differ between a terminal launch and a desktop launch.",
+      publisher: "(resolved through PATH)"
+    };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Per-server analysis
+   * ------------------------------------------------------------------ */
+
+  var UNIX_SET = setOf(INHERITED_UNIX);
+  var WIN_SET = setOf(INHERITED_WIN32);
+
+  function analyzeServer(name, entry) {
+    var s = {
+      name: name, issues: [], notes: [], secrets: [], grants: [],
+      transport: "unknown", localExec: false,
+      command: "", args: [], argvText: "",
+      code: { cls: "UNPARSED", ref: "", timing: "Not determinable from this config", why: "", publisher: "" }
+    };
+
+    if (!isPlainObject(entry)) {
+      s.issues.push("This entry is " + (entry === null ? "null" : Array.isArray(entry) ? "an array" : typeof entry) +
+        ", not an object, so no server definition could be read from it.");
+      s.code.why = "Nothing to classify.";
+      return s;
+    }
+
+    var declaredType = asString(entry.type).toLowerCase();
+    var url = asString(entry.url);
+    var command = asString(entry.command);
+
+    var rawArgs = Array.isArray(entry.args) ? entry.args : [];
+    var args = [];
+    for (var ai = 0; ai < rawArgs.length; ai++) {
+      if (typeof rawArgs[ai] === "string") { args.push(rawArgs[ai]); }
+      else {
+        args.push("");
+        s.issues.push("args[" + fmtInt(ai) + "] is " + (rawArgs[ai] === null ? "null" : typeof rawArgs[ai]) +
+          ", not a string. It was read as an empty token.");
+      }
+    }
+    if (entry.args !== undefined && !Array.isArray(entry.args)) {
+      s.issues.push("\"args\" is present but is not an array, so no arguments were read.");
+    }
+    s.command = command;
+    s.args = args;
+    s.argvText = command + (args.length ? " " + args.join(" ") : "");
+
+    if (declaredType === "http" || declaredType === "sse" || declaredType === "streamable-http" || (declaredType === "" && url !== "")) {
+      s.transport = "remote";
+      s.localExec = false;
+    } else if (command !== "" || declaredType === "stdio") {
+      s.transport = "stdio";
+      s.localExec = command !== "";
+      if (command === "") {
+        s.issues.push("Declared as stdio but no \"command\" is present, so nothing would be launched.");
+        s.localExec = false;
+      }
+    } else {
+      s.issues.push("Neither \"command\" nor \"url\" is present, so the transport cannot be determined.");
+    }
+
+    if (s.transport === "remote") {
+      var h = hostOf(url);
+      s.code = {
+        cls: "REMOTE", ref: url === "" ? "(no url)" : url,
+        timing: "Not chosen locally at all",
+        why: "Nothing is launched on your machine for this entry. The code that answers your requests is whatever the operator has deployed, it can change at any moment with no local signal, and this config has no field that could pin it. What you control here is which credentials travel to that host.",
+        publisher: h === "" ? "(no host in url)" : h
+      };
+      if (url !== "" && /^http:\/\//i.test(url)) {
+        s.notes.push({ flag: true, text: "The url uses http, not https, so anything sent in headers travels in cleartext." });
+      }
+    } else if (s.localExec) {
+      s.code = classifyCodeRef(command, args);
+    }
+
+    /* ---- secrets and grants ---- */
+    var envObj = isPlainObject(entry.env) ? entry.env : null;
+    if (entry.env !== undefined && envObj === null) {
+      s.issues.push("\"env\" is present but is not an object, so no environment was read.");
+    }
+    var declaredEnvNames = makeMap();
+
+    if (envObj) {
+      var keys = Object.keys(envObj);
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        declaredEnvNames[key] = true;
+        var val = envObj[key];
+        if (typeof val !== "string") {
+          s.issues.push("env[\"" + key + "\"] is " + (val === null ? "null" : typeof val) + ", not a string.");
+          continue;
+        }
+        if (!VAR_NAME_RE.test(key)) {
+          s.notes.push({ flag: true, text: "env key \"" + key + "\" is not a portable environment variable name." });
+        }
+        var refs = findVarRefs(val);
+        if (refs.length > 0) {
+          for (var r = 0; r < refs.length; r++) {
+            var ref = refs[r];
+            s.grants.push({
+              channel: "env", name: key, varName: ref.name,
+              fallback: ref.fallback,
+              secret: isSecretDeclaration(key, "") || SECRET_NAME_RE.test(ref.name)
+            });
+          }
+          if (isSecretDeclaration(key, "") || SECRET_NAME_RE.test(refs[0].name)) {
+            s.secrets.push({ channel: "env", name: key, kind: "shell-grant", detail: "resolved from ${" + refs[0].name + "} at launch" });
+          }
+        } else if (isSecretDeclaration(key, val)) {
+          s.secrets.push({ channel: "env", name: key, kind: "literal", detail: redact(val) });
+        }
+      }
+    }
+
+    var headersObj = isPlainObject(entry.headers) ? entry.headers : null;
+    if (entry.headers !== undefined && headersObj === null) {
+      s.issues.push("\"headers\" is present but is not an object, so no headers were read.");
+    }
+    if (headersObj) {
+      var hk = Object.keys(headersObj);
+      for (var j = 0; j < hk.length; j++) {
+        var hn = hk[j];
+        var hv = headersObj[hn];
+        if (typeof hv !== "string") {
+          s.issues.push("headers[\"" + hn + "\"] is not a string.");
+          continue;
+        }
+        var hrefs = findVarRefs(hv);
+        var isAuth = /^(authorization|proxy-authorization|x-api-key|api-key|x-auth-token|cookie)$/i.test(hn);
+        if (hrefs.length > 0) {
+          for (var hr = 0; hr < hrefs.length; hr++) {
+            s.grants.push({ channel: "header", name: hn, varName: hrefs[hr].name, fallback: hrefs[hr].fallback, secret: true });
+          }
+          s.secrets.push({ channel: "header", name: hn, kind: "shell-grant", detail: "resolved from ${" + hrefs[0].name + "} at launch" });
+        } else if (isAuth || isSecretDeclaration(hn, hv)) {
+          s.secrets.push({ channel: "header", name: hn, kind: "literal", detail: redact(hv) });
+        }
+      }
+    }
+
+    /* Secrets sitting in argv. */
+    for (var a = 0; a < args.length; a++) {
+      var tok = args[a];
+      var eq = tok.indexOf("=");
+      if (eq > 0) {
+        var an = tok.slice(0, eq);
+        var av = tok.slice(eq + 1);
+        var cleanName = an.replace(/^-+/, "");
+        if (VAR_NAME_RE.test(cleanName) && isSecretDeclaration(cleanName, av)) {
+          var argRefs = findVarRefs(av);
+          s.secrets.push({
+            channel: "arg", name: cleanName,
+            kind: argRefs.length > 0 ? "shell-grant" : "literal",
+            detail: argRefs.length > 0 ? "resolved from ${" + argRefs[0].name + "} at launch" : redact(av)
+          });
+          if (argRefs.length > 0) {
+            s.grants.push({ channel: "arg", name: cleanName, varName: argRefs[0].name, fallback: argRefs[0].fallback, secret: true });
+          }
+        }
+      } else if (/^authorization\s*:/i.test(tok)) {
+        s.secrets.push({ channel: "arg", name: "Authorization", kind: "literal", detail: redact(tok) });
+      }
+    }
+    /* docker -e pass-throughs that will be empty under a reference-SDK client. */
+    if (s.localExec && (baseName(command) === "docker" || baseName(command) === "podman")) {
+      var envFlags = dockerEnvFlags(args);
+      for (var e = 0; e < envFlags.length; e++) {
+        var ef = envFlags[e];
+        if (!ef.passthrough) {
+          if (isSecretDeclaration(ef.name, ef.value)) {
+            var already = false;
+            for (var q = 0; q < s.secrets.length; q++) {
+              if (s.secrets[q].name === ef.name) { already = true; }
+            }
+            if (!already) {
+              s.secrets.push({ channel: "arg", name: ef.name, kind: "literal", detail: redact(ef.value) });
+            }
+          }
+          continue;
+        }
+        if (hasOwn(declaredEnvNames, ef.name)) {
+          s.notes.push({ flag: false, text: "-e " + ef.name + " forwards a variable that this entry also declares in \"env\", which is the pattern that works." });
+        } else if (hasOwn(UNIX_SET, ef.name) || hasOwn(WIN_SET, ef.name)) {
+          s.notes.push({ flag: false, text: "-e " + ef.name + " forwards a variable that is on the reference SDK's default inherit list, so it will normally be present." });
+        } else {
+          s.notes.push({
+            flag: true,
+            text: "-e " + ef.name + " forwards a variable that this entry does not declare in \"env\" and that is not on the reference SDK's default inherit list (" +
+              INHERITED_UNIX.join(", ") + " on non-Windows). Under a client that uses those defaults it arrives unset, so this looks like a grant and is not one."
+          });
+        }
+      }
+    }
+
+    /* Credentials sitting in the process argument vector. */
+    var inArgv = false;
+    for (var si = 0; si < s.secrets.length; si++) {
+      if (s.secrets[si].channel === "arg") { inArgv = true; }
+    }
+    if (inArgv) {
+      s.notes.push({
+        flag: true,
+        text: "At least one credential is passed on the command line. On a typical system the full argument vector of a running process is readable by other processes on that machine (ps, /proc/<pid>/cmdline), whereas an env block is not. Moving it into \"env\" removes that exposure without changing behaviour."
+      });
+    }
+
+    /* Grants that would be left as literal text if unset. */
+    for (var g = 0; g < s.grants.length; g++) {
+      if (s.grants[g].fallback === null) {
+        s.notes.push({
+          flag: false,
+          text: "${" + s.grants[g].varName + "} is a declared grant sourced from your shell, not a literal string. It has no :-default, and Claude Code documents that an unset reference with no default leaves the literal ${" +
+            s.grants[g].varName + "} text in place while the config still loads."
+        });
+      } else {
+        s.notes.push({
+          flag: isSecretDeclaration(s.grants[g].name, s.grants[g].fallback),
+          text: "${" + s.grants[g].varName + ":-...} is a declared grant sourced from your shell with a literal fallback baked into this file (" +
+            redact(s.grants[g].fallback) + ")."
+        });
+      }
+    }
+
+    if (s.localExec) {
+      s.notes.push({
+        flag: false,
+        text: "Launched as a subprocess of your MCP client, so it runs with your uid. That, not the env block, is the bound on what it can reach."
+      });
+    }
+    return s;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Parsing the config
+   * ------------------------------------------------------------------ */
+
+  function parseConfig(text) {
+    if (typeof text !== "string" || text.length === 0) {
+      return { error: "Nothing pasted. Put an MCP client config in the box, or press Load example." };
+    }
+    if (text.trim().length === 0) {
+      return { error: "The box contains only whitespace (" + plural(text.length, "character", "characters") + "). Paste the JSON itself." };
+    }
+    if (text.length > MAX_INPUT) {
+      return {
+        error: "Input is " + fmtInt(text.length) + " characters. This tool refuses anything over " + fmtInt(MAX_INPUT) +
+          " characters so the tab stays responsive. An MCP client config is normally under a few thousand; if yours is not, you are probably pasting the wrong file."
+      };
+    }
+
+    var root;
+    try {
+      root = JSON.parse(text);
+    } catch (err) {
+      var m = /position (\d+)/.exec(asString(err && err.message));
+      var where = "";
+      if (m) {
+        var pos = Number(m[1]);
+        if (Number.isFinite(pos) && pos >= 0 && pos <= text.length) {
+          var upto = text.slice(0, pos);
+          var line = upto.split("\n").length;
+          var col = pos - upto.lastIndexOf("\n");
+          where = " (line " + fmtInt(line) + ", column " + fmtInt(col) + ")";
+        }
+      }
+      return { error: "That is not valid JSON" + where + ". Parser said: " + asString(err && err.message) };
+    }
+
+    if (!isPlainObject(root)) {
+      return {
+        error: "The JSON parsed, but the top level is " + (root === null ? "null" : Array.isArray(root) ? "an array" : typeof root) +
+          ". An MCP client config is a JSON object with an \"mcpServers\" key."
+      };
+    }
+
+    var containerKey = "";
+    if (hasOwn(root, "mcpServers")) { containerKey = "mcpServers"; }
+    else if (hasOwn(root, "servers")) { containerKey = "servers"; }
+    else {
+      return {
+        error: "No \"mcpServers\" or \"servers\" key at the top level. Top-level keys found: " +
+          (Object.keys(root).length ? Object.keys(root).slice(0, 12).join(", ") : "(none)") +
+          ". Paste the whole config file rather than one server entry."
+      };
+    }
+
+    var container = root[containerKey];
+    if (!isPlainObject(container)) {
+      return {
+        error: "\"" + containerKey + "\" is " + (container === null ? "null" : Array.isArray(container) ? "an array" : typeof container) +
+          ", but it must be an object mapping server names to their definitions."
+      };
+    }
+
+    var names = Object.keys(container);
+    if (names.length === 0) {
+      return { error: "\"" + containerKey + "\" is an empty object. There are no servers to inventory." };
+    }
+
+    return { containerKey: containerKey, names: names, container: container };
+  }
+
+  function inventory(text) {
+    var parsed = parseConfig(text);
+    if (parsed.error) { return { error: parsed.error }; }
+
+    var servers = [];
+    var byName = makeMap();
+    for (var i = 0; i < parsed.names.length; i++) {
+      var nm = parsed.names[i];
+      var s = analyzeServer(nm, parsed.container[nm]);
+      servers.push(s);
+      byName[nm] = s;
+    }
+
+    var stdioCount = 0, remoteCount = 0, unknownCount = 0, execCount = 0;
+    var union = makeMap();
+    var unionOrder = [];
+    var classCounts = makeMap();
+    var classOrder = [];
+
+    for (var j = 0; j < servers.length; j++) {
+      var sv = servers[j];
+      if (sv.transport === "stdio") { stdioCount++; }
+      else if (sv.transport === "remote") { remoteCount++; }
+      else { unknownCount++; }
+      if (sv.localExec) { execCount++; }
+
+      var cc = sv.code.cls;
+      if (!hasOwn(classCounts, cc)) { classCounts[cc] = 0; classOrder.push(cc); }
+      classCounts[cc] = classCounts[cc] + 1;
+
+      for (var k = 0; k < sv.secrets.length; k++) {
+        var sec = sv.secrets[k];
+        var key = sec.channel + ":" + sec.name;
+        if (!hasOwn(union, key)) {
+          union[key] = { key: key, channel: sec.channel, name: sec.name, kinds: [], servers: [] };
+          unionOrder.push(key);
+        }
+        union[key].servers.push(sv.name);
+        if (union[key].kinds.indexOf(sec.kind) === -1) { union[key].kinds.push(sec.kind); }
+      }
+    }
+
+    var unionList = [];
+    for (var u = 0; u < unionOrder.length; u++) { unionList.push(union[unionOrder[u]]); }
+
+    var classList = [];
+    for (var c = 0; c < classOrder.length; c++) {
+      classList.push({ cls: classOrder[c], count: classCounts[classOrder[c]] });
+    }
+
+    return {
+      containerKey: parsed.containerKey,
+      servers: servers,
+      total: servers.length,
+      stdioCount: stdioCount,
+      remoteCount: remoteCount,
+      unknownCount: unknownCount,
+      execCount: execCount,
+      union: unionList,
+      classes: classList
+    };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Rendering
+   * ------------------------------------------------------------------ */
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function tagFor(cls) {
+    if (cls === "DIGEST" || cls === "EXACT_VERSION" || cls === "PULL_NEVER") { return "fixed"; }
+    if (cls === "EVERY_LAUNCH" || cls === "PULL_ALWAYS" || cls === "GIT_REF" || cls === "REMOTE_TARBALL") { return "churn"; }
+    return "";
+  }
+
+  function renderBound(res) {
+    var box = $("boundPanel");
+    clear(box);
+    box.appendChild(el("p", "kicker", "Read this before the secret list"));
+
+    var head = el("p");
+    head.appendChild(el("span", "big", fmtInt(res.execCount) + " of " + plural(res.total, "server", "servers") +
+      " launch" + (res.execCount === 1 ? "es" : "") + " a local subprocess as your user"));
+    box.appendChild(head);
+
+    var p1 = el("p");
+    if (res.execCount > 0) {
+      p1.textContent = "The MCP transports specification says of stdio: \"The client launches the MCP server as a subprocess.\" " +
+        "A subprocess runs with your uid, so for each of those " + fmtInt(res.execCount) +
+        " entries the reachable set is your user account: your home directory, your SSH keys, your credential store, your shell history and your network. " +
+        "That bound does not shrink when the \"env\" block is small, and it does not grow when the block is large.";
+    } else {
+      p1.textContent = "No entry in this config launches a local subprocess. Every server here is reached over a network transport, " +
+        "so there is no local exec surface to bound. What you are granting instead is whatever credentials travel to each host.";
+    }
+    box.appendChild(p1);
+
+    var p2 = el("p", "sub");
+    p2.textContent = "Transport split for the " + plural(res.total, "entry", "entries") + " in \"" + res.containerKey + "\": " +
+      fmtInt(res.stdioCount) + " stdio, " + fmtInt(res.remoteCount) + " remote" +
+      (res.unknownCount > 0 ? ", " + fmtInt(res.unknownCount) + " undetermined" : "") + ".";
+    p2.style.marginBottom = "0";
+    box.appendChild(p2);
+  }
+
+  function renderSecrets(res) {
+    var box = $("secretPanel");
+    clear(box);
+    box.appendChild(el("p", "kicker", "A floor on reach, not a ceiling"));
+
+    var head = el("p");
+    head.appendChild(el("span", "big", plural(res.union.length, "distinct credential declaration", "distinct credential declarations")));
+    box.appendChild(head);
+
+    if (res.union.length === 0) {
+      box.appendChild(el("p", null, "No credential-shaped declaration was found in env, headers or argv. " +
+        "That is a statement about this file and nothing more: a server can hold a token in its own config file, " +
+        "a keyring entry or an OAuth cache that this JSON never mentions."));
+    } else {
+      box.appendChild(el("p", null, "Every server in one config is exposed to the same model in the same session, so a result returned by one " +
+        "of them is context that can steer the model's next call to another. The union below is therefore the enumerable reach of the " +
+        "session through declared credentials. It is a floor: the account-level bound above already exceeds it for every entry that " +
+        "launches a subprocess."));
+      var wrap = el("div", "tablewrap");
+      var t = el("table");
+      var thead = el("thead");
+      var hr = el("tr");
+      ["Channel", "Name", "How it is supplied", "Declared by"].forEach(function (h) {
+        var th = el("th", null, h); th.setAttribute("scope", "col"); hr.appendChild(th);
+      });
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = el("tbody");
+      for (var i = 0; i < res.union.length; i++) {
+        var u = res.union[i];
+        var tr = el("tr");
+        tr.appendChild(el("td", null, u.channel));
+        var tdn = el("td"); tdn.appendChild(el("span", "pill", u.name)); tr.appendChild(tdn);
+        tr.appendChild(el("td", null, u.kinds.map(function (k) {
+          return k === "shell-grant" ? "grant from your shell" : "literal value in this file";
+        }).join("; ")));
+        tr.appendChild(el("td", null, u.servers.join(", ")));
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+    }
+
+    var note = el("p", "sub");
+    note.textContent = "A variable sitting in your shell is not silently handed over. The MCP debugging documentation states that stdio " +
+      "servers inherit only a limited subset of environment variables automatically and that you specify an \"env\" key to provide your own, " +
+      "and the reference TypeScript SDK ships that subset as DEFAULT_INHERITED_ENV_VARS: " + INHERITED_UNIX.join(", ") +
+      " on non-Windows platforms and " + fmtInt(INHERITED_WIN32.length) + " names on win32.";
+    note.style.marginBottom = "0";
+    box.appendChild(note);
+  }
+
+  function renderTable(res) {
+    var tb = $("tbody");
+    clear(tb);
+    for (var i = 0; i < res.servers.length; i++) {
+      var s = res.servers[i];
+      var tr = el("tr");
+
+      var tdName = el("td");
+      tdName.appendChild(el("span", "pill", s.name));
+      tr.appendChild(tdName);
+
+      tr.appendChild(el("td", null, s.transport));
+
+      var tdExec = el("td");
+      var execTag = el("span", "tag " + (s.localExec ? "exec" : "remote"),
+        s.localExec ? "subprocess as you" : (s.transport === "remote" ? "no local process" : "none"));
+      tdExec.appendChild(execTag);
+      tr.appendChild(tdExec);
+
+      var tdRef = el("td");
+      tdRef.appendChild(el("span", "mono", s.code.ref === "" ? "(none)" : s.code.ref));
+      tr.appendChild(tdRef);
+
+      var tdWhen = el("td");
+      var wt = el("span", "tag " + tagFor(s.code.cls), s.code.timing);
+      tdWhen.appendChild(wt);
+      tr.appendChild(tdWhen);
+
+      tr.appendChild(el("td", null, fmtInt(s.secrets.length)));
+      tr.appendChild(el("td", null, s.code.publisher === "" ? "(none)" : s.code.publisher));
+
+      tb.appendChild(tr);
+    }
+  }
+
+  function renderCards(res) {
+    var box = $("cards");
+    clear(box);
+    for (var i = 0; i < res.servers.length; i++) {
+      var s = res.servers[i];
+      var card = el("div", "card");
+      var h = el("h3");
+      h.appendChild(el("span", null, s.name));
+      h.appendChild(el("span", "tag " + (s.localExec ? "exec" : "remote"), s.transport));
+      h.appendChild(el("span", "tag " + tagFor(s.code.cls), s.code.timing));
+      card.appendChild(h);
+
+      var dl = el("dl");
+      var row = function (k, v) {
+        dl.appendChild(el("dt", null, k));
+        var dd = el("dd");
+        dd.appendChild(el("span", "mono", v));
+        dl.appendChild(dd);
+      };
+      if (s.argvText !== "") { row("Launched as", s.argvText); }
+      row("Code reference", s.code.ref === "" ? "(none)" : s.code.ref);
+      row("Declared publisher", s.code.publisher === "" ? "(none)" : s.code.publisher);
+      card.appendChild(dl);
+
+      if (s.code.why) { card.appendChild(el("p", null, s.code.why)); }
+
+      if (s.secrets.length > 0) {
+        card.appendChild(el("p", "kicker", plural(s.secrets.length, "credential declaration", "credential declarations")));
+        var ul = el("ul", "notes");
+        for (var k = 0; k < s.secrets.length; k++) {
+          var sec = s.secrets[k];
+          ul.appendChild(el("li", null, sec.channel + " " + sec.name + " : " +
+            (sec.kind === "shell-grant" ? "declared grant, " + sec.detail : "literal in this file, " + sec.detail)));
+        }
+        card.appendChild(ul);
+      }
+
+      if (s.notes.length > 0 || s.issues.length > 0) {
+        var un = el("ul", "notes");
+        for (var n = 0; n < s.issues.length; n++) {
+          un.appendChild(el("li", "flag", "Malformed: " + s.issues[n]));
+        }
+        for (var m = 0; m < s.notes.length; m++) {
+          un.appendChild(el("li", s.notes[m].flag ? "flag" : null, s.notes[m].text));
+        }
+        card.appendChild(un);
+      }
+      box.appendChild(card);
+    }
+  }
+
+  function renderStaticTables() {
+    var tb = $("taxTbody");
+    clear(tb);
+    for (var i = 0; i < TAXONOMY.length; i++) {
+      var tr = el("tr");
+      var td0 = el("td");
+      td0.appendChild(el("span", "mono", TAXONOMY[i][0]));
+      tr.appendChild(td0);
+      tr.appendChild(el("td", null, TAXONOMY[i][1]));
+      tr.appendChild(el("td", null, TAXONOMY[i][2]));
+      tb.appendChild(tr);
+    }
+
+    var box = $("receiptsBox");
+    clear(box);
+    for (var r = 0; r < RECEIPTS.length; r++) {
+      var rec = RECEIPTS[r];
+      var card = el("div", "card");
+      card.appendChild(el("p", "kicker", rec.claim));
+      card.appendChild(el("p", "quote", "\"" + rec.quote + "\""));
+      card.appendChild(el("p", "src", rec.src));
+      var a = el("a", "src", rec.url);
+      a.href = rec.url;
+      a.rel = "noopener";
+      card.appendChild(a);
+      box.appendChild(card);
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Report text
+   * ------------------------------------------------------------------ */
+
+  function buildReport(res) {
+    var L = [];
+    L.push("MCP SERVER PRIVILEGE INVENTORY");
+    L.push("");
+    L.push("1. ACCOUNT-LEVEL BOUND");
+    L.push(fmtInt(res.execCount) + " of " + fmtInt(res.total) + " servers launch a local subprocess as your user.");
+    L.push("The MCP transports specification says of stdio: \"The client launches the MCP server as a subprocess.\"");
+    L.push("A subprocess runs with your uid, so for each of those entries the reachable set is your whole user account,");
+    L.push("regardless of what the env block declares. The secret union below is a floor on reach, not a ceiling.");
+    L.push("Transports: " + fmtInt(res.stdioCount) + " stdio, " + fmtInt(res.remoteCount) + " remote, " +
+      fmtInt(res.unknownCount) + " undetermined.");
+    L.push("");
+    L.push("2. ENUMERABLE SECRET UNION (FLOOR): " + fmtInt(res.union.length) + " distinct credential declarations");
+    if (res.union.length === 0) {
+      L.push("  (none found in env, headers or argv)");
+    } else {
+      for (var i = 0; i < res.union.length; i++) {
+        var u = res.union[i];
+        L.push("  - [" + u.channel + "] " + u.name + " -> declared by: " + u.servers.join(", ") +
+          " (" + u.kinds.join(", ") + ")");
+      }
+    }
+    L.push("");
+    L.push("3. PER-SERVER");
+    for (var s = 0; s < res.servers.length; s++) {
+      var sv = res.servers[s];
+      L.push("");
+      L.push("  " + sv.name);
+      L.push("    transport      : " + sv.transport + (sv.localExec ? " (subprocess as you)" : ""));
+      if (sv.argvText !== "") { L.push("    launched as    : " + sv.argvText); }
+      L.push("    code reference : " + (sv.code.ref === "" ? "(none)" : sv.code.ref));
+      L.push("    chosen         : " + sv.code.timing);
+      L.push("    publisher      : " + (sv.code.publisher === "" ? "(none)" : sv.code.publisher));
+      L.push("    reason         : " + sv.code.why);
+      for (var k = 0; k < sv.secrets.length; k++) {
+        L.push("    secret         : [" + sv.secrets[k].channel + "] " + sv.secrets[k].name + " (" +
+          sv.secrets[k].kind + ", " + sv.secrets[k].detail + ")");
+      }
+      for (var n = 0; n < sv.issues.length; n++) { L.push("    malformed      : " + sv.issues[n]); }
+      for (var m = 0; m < sv.notes.length; m++) { L.push("    note           : " + sv.notes[m].text); }
+    }
+    L.push("");
+    L.push("Literal credential values are redacted to a length and a four-character prefix.");
+    L.push("This report describes the config that was pasted. It is not a prediction about any running system.");
+    L.push("Report produced by mcp-server-privilege-inventory, https://0xelitesystem.github.io/mcp-server-privilege-inventory/");
+    return L.join("\n");
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Example fixture
+   * ------------------------------------------------------------------ */
+
+  var EXAMPLE = {
+    mcpServers: {
+      "github": {
+        command: "docker",
+        args: ["run", "-i", "--rm",
+          "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+          "-e", "GITHUB_API_HOST",
+          "ghcr.io/example-org/github-mcp@sha256:3f0a1c7d5e2b48916ac4f0d83b7e6152a9c0d4e7f1b28356ca7d90e4f1b2c3d4"],
+        env: { "GITHUB_PERSONAL_ACCESS_TOKEN": "example-not-a-real-token-0011223344" }
+      },
+      "postgres": {
+        command: "docker",
+        args: ["run", "-i", "--rm", "example-org/postgres-mcp:latest"],
+        env: { "DATABASE_URL": "postgresql://mcp:example-password@db.internal:5432/app" }
+      },
+      "filesystem": {
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects"]
+      },
+      "slack": {
+        command: "npx",
+        args: ["-y", "example-slack-mcp@1.4.2"],
+        env: { "SLACK_BOT_TOKEN": "example-not-a-real-token-5566778899", "SLACK_TEAM_ID": "T0EXAMPLE" }
+      },
+      "fetch": {
+        command: "uvx",
+        args: ["mcp-server-fetch"]
+      },
+      "internal-tools": {
+        command: "node",
+        args: ["/Users/you/src/internal-mcp/dist/index.js"],
+        env: { "INTERNAL_API_TOKEN": "${INTERNAL_API_TOKEN}", "LOG_LEVEL": "debug" }
+      },
+      "analytics": {
+        type: "http",
+        url: "https://mcp.example.com/analytics",
+        headers: { "Authorization": "Bearer ${ANALYTICS_API_KEY}" }
+      },
+      "scratch": {
+        command: "npx",
+        args: ["-y", "github:example-org/mcp-scratch#main"]
+      },
+      "search": {
+        command: "docker",
+        args: ["run", "-i", "--rm", "--pull=always",
+          "-e", "BRAVE_API_KEY=example-not-a-real-key-9988776655",
+          "example-org/search-mcp:1.2"]
+      }
+    }
+  };
+
+  /* ------------------------------------------------------------------ *
+   * Wiring
+   * ------------------------------------------------------------------ */
+
+  var lastReport = "";
+
+  function setStatus(kind, text) {
+    var st = $("status");
+    st.className = "msg " + kind;
+    st.textContent = text;
+    st.classList.remove("hidden");
+  }
+
+  function hideStatus() { $("status").classList.add("hidden"); }
+
+  function showResults(on) {
+    if (on) { $("results").classList.remove("hidden"); }
+    else { $("results").classList.add("hidden"); }
+  }
+
+  function run() {
+    var text = $("cfg").value;
+    var res = inventory(text);
+    if (res.error) {
+      showResults(false);
+      lastReport = "";
+      $("copyBtn").disabled = true;
+      setStatus("err", res.error);
+      return;
+    }
+    renderBound(res);
+    renderSecrets(res);
+    renderTable(res);
+    renderCards(res);
+    showResults(true);
+    lastReport = buildReport(res);
+    $("copyBtn").disabled = false;
+
+    var classNames = [];
+    for (var i = 0; i < res.classes.length; i++) { classNames.push(res.classes[i].cls); }
+    setStatus("ok", "Inventoried " + plural(res.total, "server", "servers") + " from \"" + res.containerKey + "\": " +
+      fmtInt(res.execCount) + " launching a local subprocess, " +
+      plural(res.union.length, "distinct credential declaration", "distinct credential declarations") + ", " +
+      plural(classNames.length, "mutability class", "mutability classes") + " represented.");
+  }
+
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    $("themeBtn").textContent = t === "dark" ? "Light mode" : "Dark mode";
+    try { window.localStorage.setItem("mspi-theme", t); } catch (e) {}
+  }
+
+  function init() {
+    renderStaticTables();
+
+    var current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+    $("themeBtn").textContent = current === "dark" ? "Light mode" : "Dark mode";
+    $("themeBtn").addEventListener("click", function () {
+      var now = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+      applyTheme(now === "dark" ? "light" : "dark");
+    });
+
+    $("runBtn").addEventListener("click", run);
+    $("exBtn").addEventListener("click", function () {
+      $("cfg").value = JSON.stringify(EXAMPLE, null, 2);
+      run();
+    });
+    $("clrBtn").addEventListener("click", function () {
+      $("cfg").value = "";
+      showResults(false);
+      hideStatus();
+      lastReport = "";
+      $("copyBtn").disabled = true;
+      $("cfg").focus();
+    });
+    $("copyBtn").addEventListener("click", function () {
+      if (typeof lastReport !== "string" || lastReport === "") {
+        setStatus("err", "There is no report to copy. Run an inventory first.");
+        return;
+      }
+      var done = function () { setStatus("ok", "Report copied: " + plural(lastReport.length, "character", "characters") + "."); };
+      var fail = function () { setStatus("err", "The browser refused clipboard access. Select the report text manually instead."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(lastReport).then(done, fail);
+      } else {
+        fail();
+      }
+    });
+  }
+
+  /* Exposed for the offline test harness only. */
+  if (typeof module === "object" && module && module.exports) {
+    module.exports = {
+      inventory: inventory, parseConfig: parseConfig, analyzeServer: analyzeServer,
+      classifyCodeRef: classifyCodeRef, buildReport: buildReport, redact: redact,
+      findVarRefs: findVarRefs, isSecretDeclaration: isSecretDeclaration,
+      looksOpaque: looksOpaque, splitPkgSpec: splitPkgSpec, isGitSpec: isGitSpec,
+      hostOf: hostOf, baseName: baseName, EXAMPLE: EXAMPLE, TAXONOMY: TAXONOMY,
+      RECEIPTS: RECEIPTS, INHERITED_UNIX: INHERITED_UNIX, INHERITED_WIN32: INHERITED_WIN32
+    };
+  }
+
+  if (typeof document !== "undefined" && document && document.getElementById) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  }
+})();
+</script>
+</body>
+</html>
