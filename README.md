@@ -75,11 +75,11 @@ There is no build. One HTML file, inline `<style>`, inline script, no dependenci
 
 Three repos read MCP configuration and they do different jobs. Use the one that matches your question.
 
-- [mcp-config-generator](https://github.com/0xelitesystem/mcp-config-generator) builds and validates the config. Use it when the question is "is this JSON correct and will the client accept it".
-- [mcp-tool-poisoning-scanner](https://github.com/0xelitesystem/mcp-tool-poisoning-scanner) reads the tool definitions a server returns and scans their text for prompt injection, hidden characters, tool shadowing and exfiltration-shaped parameters. Use it when the question is "what is this server telling the model".
+- [mcp-server-config-builder](https://github.com/0xelitesystem/mcp-server-config-builder) builds and validates the config. Use it when the question is "is this JSON correct and will the client accept it".
+- [mcp-tool-description-scanner](https://github.com/0xelitesystem/mcp-tool-description-scanner) reads the tool definitions a server returns and scans their text for prompt injection, hidden characters, tool shadowing and exfiltration-shaped parameters. Use it when the question is "what is this server telling the model".
 - This repo inventories privilege across the servers you already installed. Use it when the question is "what did I hand these things, and how mutable is the code behind each one".
 
-Also relevant: [mcp-basics-reference](https://github.com/0xelitesystem/mcp-basics-reference) for the protocol itself, and [mcp-server-registry](https://github.com/0xelitesystem/mcp-server-registry) for finding servers in the first place.
+Also relevant: [mcp-basics-reference](https://github.com/0xelitesystem/mcp-basics-reference) for the protocol itself, and [mcp-public-servers-directory](https://github.com/0xelitesystem/mcp-public-servers-directory) for finding servers in the first place.
 
 ## License
 
